@@ -3,7 +3,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'MoneyTrail-0.9.4-Web-Site.zip'
+      - 'MoneyTrail-0.9.5-Web-Site.zip'
       - '.github/workflows/pages.yml'
   workflow_dispatch:
 
@@ -22,7 +22,7 @@ jobs:
       - uses: actions/configure-pages@v5
       - name: Extract the website
         run: |
-          unzip -q MoneyTrail-0.9.4-Web-Site.zip -d site
+          unzip -q MoneyTrail-0.9.5-Web-Site.zip -d site
           test -s site/index.html
           test -s site/game/index.wasm.gz
       - uses: actions/upload-pages-artifact@v4
