@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: money-trail-matchmaking
+    runtime: docker
+    plan: free
+    region: frankfurt
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /healthz
+    buildFilter:
+      paths:
+        - MoneyTrail-0.9.5-Web-Loot-Update.zip
+        - Dockerfile
+        - gateway.mjs
+    envVars:
+      - key: PUBLIC_ORIGIN
+        value: https://moneytrailrun.github.io
