@@ -4,6 +4,7 @@ on:
     branches: [main]
     paths:
       - 'MoneyTrail-0.9.5-Web-Site.zip'
+      - 'MoneyTrail-0.9.5-Web-Loot-Update.zip'
       - 'tools/android_web_canvas.py'
       - '.github/workflows/pages.yml'
   workflow_dispatch:
@@ -28,6 +29,10 @@ jobs:
           test -s site/game/index.wasm.gz
       - name: Apply the Android browser canvas profile
         run: python3 tools/android_web_canvas.py site
+      - name: Apply the loot performance update
+        run: |
+          unzip -oq MoneyTrail-0.9.5-Web-Loot-Update.zip -d site
+          test -s site/game/index.pck
       - uses: actions/upload-pages-artifact@v4
         with:
           path: site
