@@ -68,15 +68,16 @@ server.on('upgrade', (request, socket, head) => {
   socket.setNoDelay(true);
   const backend = connect({ host: '127.0.0.1', port: gamePort });
   players.add(socket);
-  const close = () => {
+  socket.on('close', () => {
     players.delete(socket);
-    socket.destroy();
     backend.destroy();
-  };
-  socket.on('close', close);
-  backend.on('close', close);
-  backend.on('error', close);
-  backend.setTimeout(4000, close);
+  });
+  backend.on('close', (hadError) => {
+    if (hadError) socket.destroy();
+    else if (!socket.writableEnded) socket.end();
+  });
+  backend.on('error', () => socket.destroy());
+  backend.setTimeout(4000, () => backend.destroy(new Error('Matchmaking transport timed out')));
   backend.on('connect', () => {
     backend.setTimeout(0);
     backend.setNoDelay(true);
@@ -85,6 +86,7 @@ server.on('upgrade', (request, socket, head) => {
       `Host: 127.0.0.1:${gamePort}`,
       'Connection: Upgrade',
       'Upgrade: websocket',
+      `Origin: ${publicOrigin}`,
       'Sec-WebSocket-Version: 13',
       `Sec-WebSocket-Key: ${headers['sec-websocket-key']}`,
     ];
