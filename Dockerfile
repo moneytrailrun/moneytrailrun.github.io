@@ -11,9 +11,11 @@ RUN apt-get update \
     && rm -rf /tmp/godot.zip /var/lib/apt/lists/*
 
 WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev --ignore-scripts
 COPY MoneyTrail-0.9.5-Web-Loot-Update.zip /tmp/site.zip
 RUN unzip -q /tmp/site.zip game/index.pck -d /app && rm /tmp/site.zip
-COPY gateway.mjs gateway.mjs
+COPY gateway.mjs leaderboard.mjs ./
 
 USER node
 EXPOSE 10000

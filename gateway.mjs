@@ -2,15 +2,18 @@ import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
 import { connect } from 'node:net';
 import { createInterface } from 'node:readline';
+import { makeLeaderboard } from './leaderboard.mjs';
 
 const publicOrigin = process.env.PUBLIC_ORIGIN || 'https://moneytrailrun.github.io';
 const port = Number(process.env.PORT || 10000);
 const gamePort = Number(process.env.MONEYTRAIL_SOCKET_PORT || 43532);
 const clientLimit = 48;
+const { LEADERBOARD_DATABASE_URL: database, ...gameEnv } = process.env;
+const leaderboard = makeLeaderboard(database, publicOrigin);
 const game = spawn(process.env.GODOT_BIN || 'godot', [
   '--headless', '--main-pack', process.env.GAME_PACK || 'game/index.pck', '--', '--public-server',
 ], {
-  env: { ...process.env, MONEYTRAIL_SOCKET_PORT: String(gamePort) },
+  env: { ...gameEnv, MONEYTRAIL_SOCKET_PORT: String(gamePort), ...(database ? { MONEYTRAIL_RANKED: '1' } : {}) },
   stdio: ['ignore', 'pipe', 'inherit'],
 });
 
@@ -19,11 +22,13 @@ let stopping = false;
 const players = new Set();
 
 createInterface({ input: game.stdout }).on('line', (line) => {
+  if (leaderboard.consume(line)) return;
   console.log(line);
   if (line === `Money Trail public server ready on ${gamePort}`) ready = true;
 });
 
-const server = createServer({ maxHeaderSize: 8192, requestTimeout: 8000 }, (request, response) => {
+const server = createServer({ maxHeaderSize: 8192, requestTimeout: 8000 }, async (request, response) => {
+  if (await leaderboard.respond(request, response)) return;
   if (request.url !== '/healthz' || request.method !== 'GET') {
     response.writeHead(404).end();
     return;
@@ -106,6 +111,7 @@ function shutdown(code) {
   for (const player of players) player.destroy();
   server.close();
   game.kill();
+  void leaderboard.close();
   process.exitCode = code;
 }
 
@@ -121,3 +127,4 @@ server.on('error', (error) => {
 process.on('SIGTERM', () => shutdown(0));
 process.on('SIGINT', () => shutdown(0));
 server.listen(port, '0.0.0.0');
+
