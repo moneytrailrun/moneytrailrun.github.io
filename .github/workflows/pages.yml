@@ -33,6 +33,10 @@ jobs:
         run: |
           unzip -oq MoneyTrail-0.9.5-Web-Loot-Update.zip -d site
           test -s site/game/index.pck
+      - name: Add AdSense ownership verification
+        run: |
+          sed -i '/^<head>$/a\  <meta name="google-adsense-account" content="ca-pub-7726585830577046">' site/index.html
+          grep -Fq '<meta name="google-adsense-account" content="ca-pub-7726585830577046">' site/index.html
       - uses: actions/upload-pages-artifact@v4
         with:
           path: site
