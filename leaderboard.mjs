@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
 const MAX_PENDING_RUNS = 2048;
 const CHECKPOINT_PREFIX = 'MONEYTRAIL_RANK ';
@@ -71,6 +71,51 @@ export function makeLeaderboard(connectionString, publicOrigin) {
   let writing = false;
   const pending = new Map();
   const boards = new Map();
+  const instance = process.env.RENDER_INSTANCE_ID || randomUUID();
+  let localPlayers = 0;
+  let reportedPlayers = 0;
+  let lastPresenceWrite = 0;
+  let presenceWrite;
+  let presenceRead;
+  let onlineCount;
+  let onlineCountExpires = 0;
+
+  function updateOnlinePlayers(count) {
+    localPlayers = count;
+  }
+
+  function publishPresence() {
+    if (!connectionString || presenceWrite) return presenceWrite;
+    const count = localPlayers;
+    const now = Date.now();
+    if (count === reportedPlayers && (!count || now - lastPresenceWrite < 12000)) return;
+    presenceWrite = (async () => {
+      const db = await getPool();
+      await db.query(`INSERT INTO online_presence (instance, players, expires_at)
+        VALUES ($1, $2, now() + interval '36 seconds')
+        ON CONFLICT (instance) DO UPDATE SET players = EXCLUDED.players, expires_at = EXCLUDED.expires_at`, [instance, count]);
+      reportedPlayers = count;
+      lastPresenceWrite = now;
+      onlineCountExpires = 0;
+    })().catch(() => console.warn('Could not refresh the online player count.'))
+      .finally(() => { presenceWrite = undefined; });
+    return presenceWrite;
+  }
+
+  const presenceTimer = setInterval(publishPresence, 2000);
+  presenceTimer.unref();
+
+  async function readPresence() {
+    if (Date.now() < onlineCountExpires) return onlineCount;
+    presenceRead ??= (async () => {
+      const db = await getPool();
+      const { rows } = await db.query('SELECT coalesce(sum(players), 0)::int AS players FROM online_presence WHERE expires_at > now()');
+      onlineCount = rows[0].players;
+      onlineCountExpires = Date.now() + 5000;
+      return onlineCount;
+    })().finally(() => { presenceRead = undefined; });
+    return presenceRead;
+  }
 
   async function getPool() {
     if (!connectionString) throw new Error('Leaderboard disabled');
@@ -123,7 +168,7 @@ export function makeLeaderboard(connectionString, publicOrigin) {
 
   async function respond(request, response) {
     const route = request.url?.split('?', 1)[0];
-    if (route !== '/leaderboard' && route !== '/leaderboard/me') return false;
+    if (!['/leaderboard', '/leaderboard/me', '/online-count'].includes(route)) return false;
     addResponseHeaders(request, response, publicOrigin);
     if (request.method === 'OPTIONS' && request.headers.origin === publicOrigin) {
       response.writeHead(204, {
@@ -135,6 +180,14 @@ export function makeLeaderboard(connectionString, publicOrigin) {
     }
     if (request.method !== 'GET') {
       reply(response, 405, { error: 'Method not allowed' });
+      return true;
+    }
+    if (route === '/online-count') {
+      try {
+        reply(response, 200, { players: await readPresence() });
+      } catch {
+        reply(response, 503, { error: 'Player count temporarily unavailable' });
+      }
       return true;
     }
     const mine = route.endsWith('/me');
@@ -166,6 +219,10 @@ export function makeLeaderboard(connectionString, publicOrigin) {
   }
 
   async function close() {
+    clearInterval(presenceTimer);
+    localPlayers = 0;
+    if (presenceWrite) await presenceWrite;
+    await publishPresence();
     const stopAt = Date.now() + 5500;
     clearTimeout(retry);
     retry = undefined;
@@ -177,5 +234,5 @@ export function makeLeaderboard(connectionString, publicOrigin) {
     if (pool) await pool.end();
   }
 
-  return { consume, respond, close };
+  return { consume, respond, close, updateOnlinePlayers };
 }

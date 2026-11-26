@@ -24,6 +24,12 @@ const players = new Set();
 
 createInterface({ input: game.stdout }).on('line', (line) => {
   if (leaderboard.consume(line)) return;
+  const presence = /^MONEYTRAIL_ONLINE_COUNT (\d{1,2})$/.exec(line);
+  if (presence) {
+    const count = Number(presence[1]);
+    if (count <= clientLimit) leaderboard.updateOnlinePlayers(count);
+    return;
+  }
   console.log(line);
   if (line === `Money Trail public server ready on ${gamePort}`) ready = true;
 });
