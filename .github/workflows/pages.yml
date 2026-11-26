@@ -37,6 +37,9 @@ jobs:
         run: |
           sed -i '/^<head>$/a\  <meta name="google-adsense-account" content="ca-pub-7726585830577046">' site/index.html
           grep -Fq '<meta name="google-adsense-account" content="ca-pub-7726585830577046">' site/index.html
+      - name: Add AdSense ads.txt
+        run: |
+          printf '%s\n' 'google.com, pub-7726585830577046, DIRECT, f08c47fec0942fa0' > site/ads.txt
       - uses: actions/upload-pages-artifact@v4
         with:
           path: site
