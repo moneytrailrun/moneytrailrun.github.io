@@ -92,12 +92,16 @@ export function makeLeaderboard(connectionString, publicOrigin) {
     writing = true;
     try {
       const db = await getPool();
-      for (const [run, event] of pending) {
-        await saveCheckpoint(db, event);
-        if (pending.get(run) === event) pending.delete(run);
+      while (pending.size) {
+        for (const [run, event] of [...pending]) {
+          await saveCheckpoint(db, event);
+          if (pending.get(run) === event) pending.delete(run);
+          boards.clear();
+        }
       }
-    } catch {
-      console.warn('Leaderboard checkpoint could not be saved; retrying.');
+    } catch (error) {
+      const code = /^[A-Z0-9_]{3,24}$/.test(error.code ?? '') ? error.code : 'UNKNOWN';
+      console.warn('Leaderboard checkpoint could not be saved; retrying.', code);
       retry = setTimeout(() => { retry = undefined; void flush(); }, 4000);
       retry.unref();
     } finally {
@@ -109,6 +113,7 @@ export function makeLeaderboard(connectionString, publicOrigin) {
     if (!line.startsWith(CHECKPOINT_PREFIX)) return false;
     if (!connectionString) return true;
     const event = parseCheckpoint(line);
+    if (!event) console.warn('Leaderboard checkpoint was rejected.');
     if (event && (pending.has(event.run) || pending.size < MAX_PENDING_RUNS)) {
       pending.set(event.run, event);
       void flush();
@@ -148,11 +153,11 @@ export function makeLeaderboard(connectionString, publicOrigin) {
       } else {
         const now = Date.now();
         if (!boards.has(sort) || now >= boards.get(sort).expires) {
-          const result = await db.query(`SELECT display_name AS name, country, best::text, total::text
-            FROM ranked_players WHERE ${sort} > 0 ORDER BY ${sort} DESC, identity LIMIT 50`);
-          boards.set(sort, { expires: now + 15_000, rows: result.rows });
+          const result = await db.query(`SELECT display_name AS name, coalesce(nullif(country, ''), 'WW') AS country, best::text, total::text
+            FROM ranked_players ORDER BY ${sort} DESC, identity LIMIT 50`);
+          boards.set(sort, { expires: now + 2500, rows: result.rows });
         }
-        reply(response, 200, { rows: boards.get(sort).rows }, 'public, max-age=15');
+        reply(response, 200, { rows: boards.get(sort).rows });
       }
     } catch {
       reply(response, 503, { error: 'Leaderboard temporarily unavailable' });

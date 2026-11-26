@@ -10,6 +10,7 @@ const gamePort = Number(process.env.MONEYTRAIL_SOCKET_PORT || 43532);
 const clientLimit = 48;
 const { LEADERBOARD_DATABASE_URL: database, ...gameEnv } = process.env;
 const leaderboard = makeLeaderboard(database, publicOrigin);
+console.log(database ? 'Leaderboard recording enabled.' : 'Leaderboard recording disabled.');
 const game = spawn(process.env.GODOT_BIN || 'godot', [
   '--headless', '--main-pack', process.env.GAME_PACK || 'game/index.pck', '--', '--public-server',
 ], {
